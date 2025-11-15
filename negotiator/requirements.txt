@@ -1,0 +1,11 @@
+anthropic
+fastapi
+uvicorn[standard]
+supabase
+python-dotenv
+pydantic
+sse-starlette
+pytest
+pytest-asyncio
+httpx
+

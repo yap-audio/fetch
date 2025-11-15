@@ -79,7 +79,7 @@ export function UserProfile({ walletAddress }: UserProfileProps) {
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={fetchBalance}
+              onClick={() => fetchBalance(false)}
               disabled={loading}
             >
               <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />

@@ -9,6 +9,7 @@ interface NegotiationStreamProps {
   intentId: string;
   onStart?: () => void;
   onComplete?: (outcome: string) => void;
+  showInSidebar?: boolean;
 }
 
 interface Message {
@@ -16,47 +17,44 @@ interface Message {
   content: string;
   decision?: string;
   round: number;
+  timestamp: number;
 }
 
-export function NegotiationStream({ intentId, onStart, onComplete }: NegotiationStreamProps) {
+interface SystemMessage {
+  type: 'system';
+  content: string;
+  timestamp: number;
+}
+
+export function NegotiationStream({ intentId, onStart, onComplete, showInSidebar = false }: NegotiationStreamProps) {
   const [isNegotiating, setIsNegotiating] = useState(false);
-  const [sellerMessages, setSellerMessages] = useState<Message[]>([]);
-  const [buyerMessages, setBuyerMessages] = useState<Message[]>([]);
-  const [currentSellerContent, setCurrentSellerContent] = useState('');
-  const [currentBuyerContent, setCurrentBuyerContent] = useState('');
-  const [sellerThinking, setSellerThinking] = useState(false);
-  const [buyerThinking, setBuyerThinking] = useState(false);
+  const [messages, setMessages] = useState<(Message | SystemMessage)[]>([]);
+  const [thinking, setThinking] = useState<'seller' | 'buyer' | null>(null);
   const [outcome, setOutcome] = useState<string | null>(null);
   const [rounds, setRounds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   
-  const sellerScrollRef = useRef<HTMLDivElement>(null);
-  const buyerScrollRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   // Auto-scroll to bottom
   useEffect(() => {
-    sellerScrollRef.current?.scrollTo({
-      top: sellerScrollRef.current.scrollHeight,
+    chatScrollRef.current?.scrollTo({
+      top: chatScrollRef.current.scrollHeight,
       behavior: 'smooth'
     });
-  }, [sellerMessages, currentSellerContent]);
-
-  useEffect(() => {
-    buyerScrollRef.current?.scrollTo({
-      top: buyerScrollRef.current.scrollHeight,
-      behavior: 'smooth'
-    });
-  }, [buyerMessages, currentBuyerContent]);
+  }, [messages]);
 
   const startNegotiation = () => {
     setIsNegotiating(true);
-    setSellerMessages([]);
-    setBuyerMessages([]);
-    setCurrentSellerContent('');
-    setCurrentBuyerContent('');
+    setMessages([{
+      type: 'system',
+      content: 'Starting negotiation...',
+      timestamp: Date.now()
+    }]);
     setOutcome(null);
     setError(null);
+    setThinking(null);
     onStart?.();
 
     const eventSource = new EventSource(`/api/negotiate/${intentId}`);
@@ -67,52 +65,80 @@ export function NegotiationStream({ intentId, onStart, onComplete }: Negotiation
         const data = JSON.parse(event.data);
 
         if (data.type === 'start') {
-          // Negotiation started
           setRounds(data.maxRounds);
-        } else if (data.type === 'seller') {
+        } else if (data.type === 'seller' || data.type === 'buyer') {
           if (data.phase === 'thinking') {
-            setSellerThinking(true);
-            setCurrentSellerContent('');
-          } else if (data.phase === 'response') {
-            setSellerThinking(false);
-            setCurrentSellerContent(prev => prev + data.content);
-          } else if (data.phase === 'decision') {
-            setSellerThinking(false);
-            setSellerMessages(prev => [
-              ...prev,
-              {
-                role: 'seller',
-                content: currentSellerContent,
-                decision: data.decision,
-                round: data.round
+            setThinking(data.type);
+            // Add a new message placeholder only if the last message isn't from this agent in this round
+            setMessages(prev => {
+              const last = prev[prev.length - 1];
+              if (last && 'role' in last && last.role === data.type && last.round === data.round) {
+                // Already have a message for this agent/round, don't add another
+                return prev;
               }
-            ]);
-            setCurrentSellerContent('');
-          }
-        } else if (data.type === 'buyer') {
-          if (data.phase === 'thinking') {
-            setBuyerThinking(true);
-            setCurrentBuyerContent('');
+              return [...prev, {
+                role: data.type,
+                content: '',
+                round: data.round,
+                timestamp: Date.now()
+              }];
+            });
           } else if (data.phase === 'response') {
-            setBuyerThinking(false);
-            setCurrentBuyerContent(prev => prev + data.content);
-          } else if (data.phase === 'decision') {
-            setBuyerThinking(false);
-            setBuyerMessages(prev => [
-              ...prev,
-              {
-                role: 'buyer',
-                content: currentBuyerContent,
-                decision: data.decision,
-                round: data.round
+            setThinking(null);
+            // Update the last message with new content
+            setMessages(prev => {
+              const last = prev[prev.length - 1];
+              if (last && 'role' in last && last.role === data.type) {
+                return [
+                  ...prev.slice(0, -1),
+                  { ...last, content: last.content + data.content }
+                ];
               }
-            ]);
-            setCurrentBuyerContent('');
+              return prev;
+            });
+          } else if (data.phase === 'decision') {
+            setThinking(null);
+            // Update the last message with the decision
+            setMessages(prev => {
+              const last = prev[prev.length - 1];
+              if (last && 'role' in last && last.role === data.type) {
+                const updated = [
+                  ...prev.slice(0, -1),
+                  { ...last, decision: data.decision }
+                ];
+                
+                // Add decision as system message if not 'continue'
+                if (data.decision !== 'continue') {
+                  updated.push({
+                    type: 'system',
+                    content: `${data.type === 'seller' ? 'Seller' : 'Buyer'} decided to ${data.decision}`,
+                    timestamp: Date.now()
+                  });
+                }
+                
+                return updated;
+              }
+              return prev;
+            });
           }
         } else if (data.type === 'complete') {
           setOutcome(data.outcome);
           setRounds(data.rounds);
           setIsNegotiating(false);
+          
+          // Add completion message
+          const outcomeText = data.outcome === 'accepted' 
+            ? `✅ Deal reached! Completed in ${data.rounds} round${data.rounds !== 1 ? 's' : ''}`
+            : data.outcome === 'rejected'
+            ? `❌ No deal. Negotiation ended in ${data.rounds} round${data.rounds !== 1 ? 's' : ''}`
+            : `⏱️ Max rounds reached (${data.rounds})`;
+          
+          setMessages(prev => [...prev, {
+            type: 'system',
+            content: outcomeText,
+            timestamp: Date.now()
+          }]);
+          
           eventSource.close();
           onComplete?.(data.outcome);
         } else if (data.type === 'error') {
@@ -137,31 +163,17 @@ export function NegotiationStream({ intentId, onStart, onComplete }: Negotiation
     setIsNegotiating(false);
   };
 
-  const getOutcomeBadge = () => {
-    if (!outcome) return null;
-    
-    const variants = {
-      accepted: 'default',
-      rejected: 'destructive',
-      max_rounds_reached: 'secondary'
-    } as const;
-
-    const labels = {
-      accepted: '✅ Deal Reached!',
-      rejected: '❌ No Deal',
-      max_rounds_reached: '⏱️ Max Rounds Reached'
-    } as const;
-
-    return (
-      <Badge variant={variants[outcome as keyof typeof variants] || 'secondary'} className="text-lg py-2 px-4">
-        {labels[outcome as keyof typeof labels] || outcome}
-      </Badge>
-    );
-  };
+  // Auto-start if in sidebar mode
+  useEffect(() => {
+    if (showInSidebar && !isNegotiating && messages.length === 0) {
+      startNegotiation();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInSidebar]);
 
   return (
     <div className="space-y-4">
-      {!isNegotiating && !outcome && (
+      {!showInSidebar && !isNegotiating && messages.length === 0 && (
         <div className="flex justify-center">
           <Button
             size="lg"
@@ -181,95 +193,77 @@ export function NegotiationStream({ intentId, onStart, onComplete }: Negotiation
         </Card>
       )}
 
-      {(isNegotiating || sellerMessages.length > 0 || buyerMessages.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Seller Column */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Seller Agent</span>
-                {sellerThinking && (
-                  <Badge variant="outline">Thinking...</Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div
-                ref={sellerScrollRef}
-                className="space-y-4 max-h-[600px] overflow-y-auto pr-4"
-              >
-                {sellerMessages.map((msg, idx) => (
-                  <div key={idx} className="p-4 bg-muted rounded-lg">
-                    <div className="flex items-start justify-between mb-2">
-                      <span className="text-sm font-medium">Round {msg.round}</span>
-                      {msg.decision && (
-                        <Badge variant="outline" className="text-xs">
-                          {msg.decision}
-                        </Badge>
-                      )}
+      {/* Chat-style conversation */}
+      {(showInSidebar || messages.length > 0) && (
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Negotiation</span>
+              {thinking && (
+                <Badge variant="outline">
+                  {thinking === 'seller' ? 'You' : 'Buyer'} thinking...
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div
+              ref={chatScrollRef}
+              className={`space-y-4 overflow-y-auto pr-4 ${showInSidebar ? 'h-[calc(100vh-250px)]' : 'max-h-[600px]'}`}
+            >
+              {messages.map((msg, idx) => {
+                if ('type' in msg && msg.type === 'system') {
+                  return (
+                    <div key={idx} className="flex justify-center">
+                      <Badge variant="secondary" className="text-xs">
+                        {msg.content}
+                      </Badge>
                     </div>
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  </div>
-                ))}
-                {currentSellerContent && (
-                  <div className="p-4 bg-muted rounded-lg">
-                    <p className="text-sm whitespace-pre-wrap">{currentSellerContent}</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Buyer Column */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Buyer Agent</span>
-                {buyerThinking && (
-                  <Badge variant="outline">Thinking...</Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div
-                ref={buyerScrollRef}
-                className="space-y-4 max-h-[600px] overflow-y-auto pr-4"
-              >
-                {buyerMessages.map((msg, idx) => (
-                  <div key={idx} className="p-4 bg-muted rounded-lg">
-                    <div className="flex items-start justify-between mb-2">
-                      <span className="text-sm font-medium">Round {msg.round}</span>
-                      {msg.decision && (
-                        <Badge variant="outline" className="text-xs">
-                          {msg.decision}
-                        </Badge>
-                      )}
+                  );
+                }
+                
+                const message = msg as Message;
+                const isSeller = message.role === 'seller';
+                
+                return (
+                  <div
+                    key={idx}
+                    className={`flex ${isSeller ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[80%] ${isSeller ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {isSeller ? 'You (Seller)' : 'Buyer'}
+                        </span>
+                        {message.decision && message.decision !== 'continue' && (
+                          <Badge variant="outline" className="text-xs">
+                            {message.decision}
+                          </Badge>
+                        )}
+                      </div>
+                      <div
+                        className={`p-3 rounded-lg ${
+                          isSeller
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted'
+                        }`}
+                      >
+                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      </div>
                     </div>
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                   </div>
-                ))}
-                {currentBuyerContent && (
-                  <div className="p-4 bg-muted rounded-lg">
-                    <p className="text-sm whitespace-pre-wrap">{currentBuyerContent}</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {outcome && (
-        <div className="flex flex-col items-center gap-4 py-8">
-          {getOutcomeBadge()}
-          <p className="text-muted-foreground">
-            Completed in {rounds} round{rounds !== 1 ? 's' : ''}
-          </p>
-          {isNegotiating && (
-            <Button variant="outline" onClick={stopNegotiation}>
-              Stop Negotiation
-            </Button>
-          )}
+      {isNegotiating && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={stopNegotiation}>
+            Stop Negotiation
+          </Button>
         </div>
       )}
     </div>

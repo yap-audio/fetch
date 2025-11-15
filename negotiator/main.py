@@ -8,9 +8,17 @@ import json
 import asyncio
 import httpx
 import os
+import logging
 
 from database import get_intent, IntentNotFoundError, update_intent_with_transactions
 from agent import NegotiationAgent
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Import transaction tracker (optional)
 try:
@@ -57,36 +65,54 @@ async def negotiate(request: NegotiateRequest):
     Args:
         request: Negotiation request with agent_type ("buyer" or "seller")
     """
+    logger.info(f"📥 /negotiate called - agent_type: {request.agent_type}, intent_id: {request.intent_id}")
+    logger.info(f"   Message length: {len(request.seller_message)}, History length: {len(request.conversation_history or [])}")
+    
     # Validate agent_type
     if request.agent_type not in ["buyer", "seller"]:
+        logger.error(f"❌ Invalid agent_type: {request.agent_type}")
         raise HTTPException(status_code=400, detail="agent_type must be 'buyer' or 'seller'")
     
     # Fetch intent from database
     try:
+        logger.info(f"🔍 Fetching intent {request.intent_id} from database...")
         intent_data = get_intent(request.intent_id)
+        logger.info(f"✅ Intent found: ${intent_data.get('max_amount_usd')} - {intent_data.get('description')[:50]}...")
     except IntentNotFoundError:
+        logger.error(f"❌ Intent {request.intent_id} not found")
         raise HTTPException(status_code=404, detail=f"Intent {request.intent_id} not found")
     except Exception as e:
+        logger.error(f"❌ Database error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
     # Create negotiation agent with specified type
+    logger.info(f"🤖 Creating {request.agent_type} agent...")
     agent = NegotiationAgent(intent_data, agent_type=request.agent_type)
+    logger.info(f"✅ Agent created, starting negotiation stream...")
     
     # Stream responses
     async def event_generator():
         """Generate SSE events from agent responses."""
         try:
+            chunk_count = 0
             async for chunk in agent.negotiate(
                 seller_message=request.seller_message,
                 conversation_history=request.conversation_history
             ):
+                chunk_count += 1
                 # Format as SSE
                 data = json.dumps(chunk)
                 yield f"data: {data}\n\n"
                 
+                # Log every 10th chunk and final messages
+                if chunk_count % 10 == 0 or chunk.get("type") == "final":
+                    logger.info(f"📤 Chunk {chunk_count}: type={chunk.get('type')}, decision={chunk.get('decision', 'N/A')}")
+                
                 # Small delay for better streaming UX
                 await asyncio.sleep(0.01)
+            logger.info(f"✅ Negotiation stream completed ({chunk_count} chunks)")
         except Exception as e:
+            logger.error(f"❌ Error in event_generator: {str(e)}")
             error_data = json.dumps({
                 "type": "error",
                 "content": str(e),

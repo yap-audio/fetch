@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ export function IntentCard({ intent }: IntentCardProps) {
     switch (status) {
       case 'live':
         return 'default';
+      case 'completed':
       case 'fulfilled':
         return 'secondary';
       case 'cancelled':
@@ -78,9 +80,11 @@ export function IntentCard({ intent }: IntentCardProps) {
           </div>
 
           {/* Fulfill Button */}
-          <Button className="w-full" size="lg">
-            Fulfill
-          </Button>
+          <Link href={`/intent/${intent.uuid}`}>
+            <Button className="w-full" size="lg">
+              Fulfill
+            </Button>
+          </Link>
         </div>
       </CardContent>
     </Card>

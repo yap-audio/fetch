@@ -8,7 +8,7 @@ export type Database = {
           taker_id: string | null;
           max_amount_usd: number;
           description: string;
-          status: 'live' | 'fulfilled' | 'cancelled';
+          status: 'live' | 'completed' | 'cancelled' | 'fulfilled';
           created_at: string | null;
           updated_at: string | null;
           image_uuid: string | null;
@@ -21,7 +21,7 @@ export type Database = {
           taker_id?: string | null;
           max_amount_usd: number;
           description: string;
-          status?: 'live' | 'fulfilled' | 'cancelled';
+          status?: 'live' | 'completed' | 'cancelled' | 'fulfilled';
           created_at?: string | null;
           updated_at?: string | null;
           image_uuid?: string | null;
@@ -34,7 +34,7 @@ export type Database = {
           taker_id?: string | null;
           max_amount_usd?: number;
           description?: string;
-          status?: 'live' | 'fulfilled' | 'cancelled';
+          status?: 'live' | 'completed' | 'cancelled' | 'fulfilled';
           created_at?: string | null;
           updated_at?: string | null;
           image_uuid?: string | null;

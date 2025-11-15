@@ -79,6 +79,7 @@ export async function GET(
 
           let fullResponse = '';
           let decision = 'continue';
+          let paymentResult = null;
           const reader = response.body?.getReader();
           const decoder = new TextDecoder();
 
@@ -106,6 +107,7 @@ export async function GET(
                       });
                     } else if (data.type === 'final') {
                       decision = data.decision || 'continue';
+                      paymentResult = data.payment_result || null;
                     }
                   } catch (e) {
                     // Skip invalid JSON
@@ -115,11 +117,12 @@ export async function GET(
             }
           }
 
-          // Send decision
+          // Send decision with payment result
           sendEvent({
             type: agentType,
             phase: 'decision',
             decision,
+            payment_result: paymentResult,
             round: currentRound + 1
           });
 

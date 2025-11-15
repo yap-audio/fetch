@@ -116,6 +116,35 @@ export function NegotiationStream({ intentId, onStart, onComplete, showInSidebar
                   });
                 }
                 
+                // Add payment information if present (buyer only)
+                if (data.payment_result) {
+                  const payment = data.payment_result;
+                  
+                  if (payment.seller_payment) {
+                    updated.push({
+                      type: 'system',
+                      content: `💰 Payment sent to seller: $${payment.amount_paid?.toFixed(2) || 'N/A'} USDC`,
+                      timestamp: Date.now()
+                    });
+                  }
+                  
+                  if (payment.user_refund) {
+                    updated.push({
+                      type: 'system',
+                      content: `💵 Refund sent to user: $${payment.amount_refunded?.toFixed(2) || 'N/A'} USDC`,
+                      timestamp: Date.now()
+                    });
+                  }
+                  
+                  if (payment.error) {
+                    updated.push({
+                      type: 'system',
+                      content: `⚠️ Payment error: ${payment.error}`,
+                      timestamp: Date.now()
+                    });
+                  }
+                }
+                
                 return updated;
               }
               return prev;

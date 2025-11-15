@@ -12,6 +12,16 @@ import sys
 from typing import Dict, List, Optional, Tuple
 from database import get_intent
 
+# Import A2A SDK (optional dependency for A2A protocol support)
+try:
+    from a2a.client import A2AClient, A2ACardResolver
+    from a2a.types import MessageSendParams, SendMessageRequest
+    from uuid import uuid4
+    import httpx as httpx_module
+    A2A_AVAILABLE = True
+except ImportError:
+    A2A_AVAILABLE = False
+
 
 class NegotiationOrchestrator:
     """Coordinates negotiations between buyer and seller agents."""
@@ -20,7 +30,8 @@ class NegotiationOrchestrator:
         self,
         buyer_url: str = "http://localhost:8000",
         seller_url: str = "http://localhost:8001",
-        timeout: float = 120.0
+        timeout: float = 120.0,
+        protocol: str = "http"
     ):
         """
         Initialize orchestrator.
@@ -29,10 +40,12 @@ class NegotiationOrchestrator:
             buyer_url: URL of buyer agent service
             seller_url: URL of seller agent service
             timeout: Timeout for HTTP requests
+            protocol: Communication protocol ("http" or "a2a")
         """
         self.buyer_url = buyer_url
         self.seller_url = seller_url
         self.timeout = timeout
+        self.protocol = protocol
     
     async def call_agent(
         self,
@@ -43,11 +56,25 @@ class NegotiationOrchestrator:
         conversation_history: List[Dict[str, str]]
     ) -> Tuple[str, str]:
         """
-        Call an agent and get its response.
+        Call an agent and get its response (HTTP or A2A based on protocol).
         
         Returns:
             Tuple of (full_response, decision)
         """
+        if self.protocol == "a2a":
+            return await self._call_agent_a2a(url, agent_type, intent_id, message, conversation_history)
+        else:
+            return await self._call_agent_http(url, agent_type, intent_id, message, conversation_history)
+    
+    async def _call_agent_http(
+        self,
+        url: str,
+        agent_type: str,
+        intent_id: str,
+        message: str,
+        conversation_history: List[Dict[str, str]]
+    ) -> Tuple[str, str]:
+        """Call agent via HTTP/SSE."""
         payload = {
             "intent_id": intent_id,
             "seller_message": message,
@@ -68,6 +95,74 @@ class NegotiationOrchestrator:
                             full_response += data["content"]
                         elif data["type"] == "final":
                             decision = data["decision"]
+            
+            return full_response, decision
+    
+    async def _call_agent_a2a(
+        self,
+        url: str,
+        agent_type: str,
+        intent_id: str,
+        message: str,
+        conversation_history: List[Dict[str, str]]
+    ) -> Tuple[str, str]:
+        """Call agent via A2A protocol."""
+        if not A2A_AVAILABLE:
+            raise ImportError("a2a-sdk not installed. Install with: uv add a2a-sdk")
+        
+        async with httpx_module.AsyncClient(timeout=self.timeout) as httpx_client:
+            # Resolve agent card
+            resolver = A2ACardResolver(
+                httpx_client=httpx_client,
+                base_url=url
+            )
+            
+            agent_card = await resolver.get_agent_card()
+            
+            # Create A2A client
+            client = A2AClient(
+                httpx_client=httpx_client,
+                agent_card=agent_card
+            )
+            
+            # Build message payload with metadata on the message
+            send_message_payload = {
+                'message': {
+                    'role': 'user',
+                    'parts': [
+                        {'kind': 'text', 'text': message}
+                    ],
+                    'messageId': uuid4().hex,
+                    'metadata': {
+                        'intent_id': intent_id,
+                        'agent_type': agent_type
+                    }
+                }
+            }
+            
+            request = SendMessageRequest(
+                id=str(uuid4()),
+                params=MessageSendParams(**send_message_payload)
+            )
+            
+            # Send message
+            response = await client.send_message(request)
+            
+            # Extract response text
+            full_response = ""
+            if hasattr(response, 'root') and hasattr(response.root, 'result'):
+                result = response.root.result
+                if hasattr(result, 'parts'):
+                    for part in result.parts:
+                        if hasattr(part, 'root') and hasattr(part.root, 'text'):
+                            full_response += part.root.text
+            
+            # Extract decision from response text
+            decision = "continue"
+            if "DECISION: ACCEPT" in full_response.upper():
+                decision = "accept"
+            elif "DECISION: REJECT" in full_response.upper():
+                decision = "reject"
             
             return full_response, decision
     
@@ -208,12 +303,14 @@ async def main():
     parser.add_argument("--seller-url", default="http://localhost:8001", help="Seller service URL")
     parser.add_argument("--max-rounds", type=int, default=10, help="Maximum negotiation rounds")
     parser.add_argument("--quiet", action="store_true", help="Suppress verbose output")
+    parser.add_argument("--protocol", default="http", choices=["http", "a2a"], help="Protocol to use (http or a2a)")
     
     args = parser.parse_args()
     
     orchestrator = NegotiationOrchestrator(
         buyer_url=args.buyer_url,
-        seller_url=args.seller_url
+        seller_url=args.seller_url,
+        protocol=args.protocol
     )
     
     result = await orchestrator.run_negotiation(

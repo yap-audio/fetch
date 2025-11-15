@@ -9,8 +9,15 @@ import asyncio
 import httpx
 import os
 
-from database import get_intent, IntentNotFoundError
+from database import get_intent, IntentNotFoundError, update_intent_with_transactions
 from agent import NegotiationAgent
+
+# Import transaction tracker (optional)
+try:
+    from transaction_tracker import TransactionTracker
+    TRACKER_AVAILABLE = True
+except ImportError:
+    TRACKER_AVAILABLE = False
 
 app = FastAPI(title="Negotiation Agent API")
 
@@ -32,7 +39,12 @@ class InitiateRequest(BaseModel):
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"status": "ok", "service": "negotiation-agent"}
+    service_name = os.getenv("SERVICE_NAME", "unknown")
+    return {
+        "status": "ok",
+        "service": "negotiation-agent",
+        "service_name": service_name
+    }
 
 
 @app.post("/negotiate")
@@ -194,6 +206,69 @@ async def initiate_negotiation(request: InitiateRequest):
         "seller_pitch": opening_pitch,
         "buyer_response": buyer_response_text,
         "buyer_decision": buyer_decision
+    }
+
+
+@app.get("/intent/{intent_id}/transactions")
+async def get_intent_transactions_endpoint(intent_id: str):
+    """
+    Get Base blockchain transaction hashes for an intent.
+    
+    Returns transaction hashes and Basescan links.
+    """
+    try:
+        intent = get_intent(intent_id)
+    except IntentNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Intent {intent_id} not found")
+    
+    tx_seller = intent.get("tx_buyer_to_seller_id")
+    tx_user = intent.get("tx_buyer_to_user_id")
+    
+    return {
+        "intent_id": intent_id,
+        "tx_buyer_to_seller": tx_seller,
+        "tx_buyer_to_user": tx_user,
+        "basescan_links": {
+            "seller_payment": f"https://basescan.org/tx/{tx_seller}" if tx_seller else None,
+            "user_refund": f"https://basescan.org/tx/{tx_user}" if tx_user else None
+        }
+    }
+
+
+@app.post("/intent/{intent_id}/update-transactions")
+async def manually_update_transactions(intent_id: str):
+    """
+    Manually trigger transaction hash update from Etherscan.
+    
+    Buyer service only.
+    """
+    if not TRACKER_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Transaction tracker not available")
+    
+    # Only allow on buyer service
+    service_name = os.getenv("SERVICE_NAME", "").lower()
+    if service_name == "seller":
+        raise HTTPException(status_code=403, detail="Only buyer service can update transactions")
+    
+    # Query Etherscan for latest transactions
+    tracker = TransactionTracker()
+    tx_hashes = await tracker.get_latest_payment_txs()
+    
+    # Update database
+    result = update_intent_with_transactions(
+        intent_id,
+        tx_hashes["tx_buyer_to_seller"],
+        tx_hashes["tx_buyer_to_user"]
+    )
+    
+    return {
+        "updated": True,
+        "intent_id": intent_id,
+        "transactions": tx_hashes,
+        "basescan_links": {
+            "seller_payment": f"https://basescan.org/tx/{tx_hashes['tx_buyer_to_seller']}" if tx_hashes["tx_buyer_to_seller"] else None,
+            "user_refund": f"https://basescan.org/tx/{tx_hashes['tx_buyer_to_user']}" if tx_hashes["tx_buyer_to_user"] else None
+        }
     }
 
 

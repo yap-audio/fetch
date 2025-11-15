@@ -9,7 +9,7 @@ import asyncio
 import json
 import httpx
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from database import get_intent
 
 # Import A2A SDK (optional dependency for A2A protocol support)
@@ -54,15 +54,16 @@ class NegotiationOrchestrator:
         intent_id: str,
         message: str,
         conversation_history: List[Dict[str, str]]
-    ) -> Tuple[str, str]:
+    ) -> Tuple[str, str, Optional[Dict[str, Any]]]:
         """
         Call an agent and get its response (HTTP or A2A based on protocol).
         
         Returns:
-            Tuple of (full_response, decision)
+            Tuple of (full_response, decision, payment_result)
         """
         if self.protocol == "a2a":
-            return await self._call_agent_a2a(url, agent_type, intent_id, message, conversation_history)
+            response, decision = await self._call_agent_a2a(url, agent_type, intent_id, message, conversation_history)
+            return response, decision, None  # A2A doesn't return payments yet
         else:
             return await self._call_agent_http(url, agent_type, intent_id, message, conversation_history)
     
@@ -73,7 +74,7 @@ class NegotiationOrchestrator:
         intent_id: str,
         message: str,
         conversation_history: List[Dict[str, str]]
-    ) -> Tuple[str, str]:
+    ) -> Tuple[str, str, Optional[Dict[str, Any]]]:
         """Call agent via HTTP/SSE."""
         payload = {
             "intent_id": intent_id,
@@ -85,6 +86,7 @@ class NegotiationOrchestrator:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             full_response = ""
             decision = "continue"
+            payment_result = None
             
             async with client.stream("POST", f"{url}/negotiate", json=payload) as response:
                 async for line in response.aiter_lines():
@@ -95,8 +97,9 @@ class NegotiationOrchestrator:
                             full_response += data["content"]
                         elif data["type"] == "final":
                             decision = data["decision"]
+                            payment_result = data.get("payment_result")
             
-            return full_response, decision
+            return full_response, decision, payment_result
     
     async def _call_agent_a2a(
         self,
@@ -232,7 +235,7 @@ class NegotiationOrchestrator:
             if verbose:
                 print(f"\n{current_speaker.upper()} thinking...")
             
-            response, decision = await self.call_agent(
+            response, decision, payment_result = await self.call_agent(
                 current_url,
                 current_speaker,
                 intent_id,
@@ -243,12 +246,18 @@ class NegotiationOrchestrator:
             if verbose:
                 print(f"\n{current_speaker.upper()}: {response[:200]}{'...' if len(response) > 200 else ''}")
                 print(f"\nDecision: {decision.upper()}")
+                if payment_result:
+                    print(f"💳 Payment executed: {payment_result}")
             
-            # Add to history
-            conversation_history.append({
+            # Add to history with payment result
+            conversation_entry = {
                 "role": current_speaker,
                 "content": response
-            })
+            }
+            if payment_result:
+                conversation_entry["payment_result"] = payment_result
+            
+            conversation_history.append(conversation_entry)
             
             # Check if negotiation is complete
             if decision == "accept":

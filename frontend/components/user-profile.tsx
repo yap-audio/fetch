@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 interface UserProfileProps {
   walletAddress: string;
@@ -52,6 +53,34 @@ export function UserProfile({ walletAddress }: UserProfileProps) {
   useEffect(() => {
     fetchBalance();
   }, []);
+
+  // Subscribe to realtime balance updates
+  useEffect(() => {
+    if (!walletAddress) return;
+
+    const channel = supabase
+      .channel(`balance-${walletAddress}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'balances',
+          filter: `id=eq.${walletAddress}`
+        },
+        (payload) => {
+          if (payload.new && 'balance_usdc' in payload.new) {
+            const newBalance = (payload.new as any).balance_usdc;
+            setBalance(newBalance.toFixed(2));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [walletAddress]);
 
   return (
     <Card>

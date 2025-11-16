@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
-import { IntentCard } from '@/components/intent-card';
 import { UserProfile } from '@/components/user-profile';
 import { AgentProfile } from '@/components/agent-profile';
+import { IntentsListRealtime } from '@/components/intents-list-realtime';
 import { Intent } from '@/lib/database.types';
 
 export const dynamic = 'force-dynamic';
@@ -36,17 +36,7 @@ export default async function Home() {
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Intents Grid - Main Content */}
           <div className="flex-1">
-            {intents && intents.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {intents.map((intent) => (
-                  <IntentCard key={intent.uuid} intent={intent} />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">No intents found</p>
-              </div>
-            )}
+            <IntentsListRealtime initialIntents={intents || []} />
           </div>
 
           {/* Wallets Sidebar */}

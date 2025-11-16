@@ -1,19 +1,44 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Intent } from '@/lib/database.types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NegotiationStream } from '@/components/negotiation-stream';
+import { supabase } from '@/lib/supabase';
 
 interface IntentDetailClientProps {
-  intent: Intent;
+  initialIntent: Intent;
 }
 
-export function IntentDetailClient({ intent }: IntentDetailClientProps) {
+export function IntentDetailClient({ initialIntent }: IntentDetailClientProps) {
+  const [intent, setIntent] = useState<Intent>(initialIntent);
   const [showNegotiation, setShowNegotiation] = useState(false);
+
+  useEffect(() => {
+    // Subscribe to realtime updates for this specific intent
+    const channel = supabase
+      .channel(`intent-${intent.uuid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'intents',
+          filter: `uuid=eq.${intent.uuid}`
+        },
+        (payload) => {
+          setIntent(payload.new as Intent);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [intent.uuid]);
 
   const getImageUrl = (imageUuid: string | null) => {
     if (!imageUuid) return null;

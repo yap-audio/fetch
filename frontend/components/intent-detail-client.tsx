@@ -135,16 +135,13 @@ export function IntentDetailClient({ initialIntent }: IntentDetailClientProps) {
 
             {/* Negotiation Button */}
             {!showNegotiation && (
-              <div>
-                <h2 className="text-xl font-bold mb-4">Negotiation</h2>
-                <div className="flex justify-center">
-                  <Button
-                    size="lg"
-                    onClick={() => setShowNegotiation(true)}
-                  >
-                    Negotiate for me
-                  </Button>
-                </div>
+              <div className="flex justify-center">
+                <Button
+                  size="lg"
+                  onClick={() => setShowNegotiation(true)}
+                >
+                  Negotiate for me
+                </Button>
               </div>
             )}
           </div>

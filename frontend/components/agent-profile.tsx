@@ -5,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 
-interface UserProfileProps {
+interface AgentProfileProps {
+  agentName: string;
   walletAddress: string;
 }
 
-export function UserProfile({ walletAddress }: UserProfileProps) {
+export function AgentProfile({ agentName, walletAddress }: AgentProfileProps) {
   const [balance, setBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,7 @@ export function UserProfile({ walletAddress }: UserProfileProps) {
     setError(null);
     
     try {
-      const response = await fetch('/api/balance');
+      const response = await fetch(`/api/balance?address=${walletAddress}`);
       const data = await response.json();
 
       if (response.ok) {
@@ -51,12 +52,13 @@ export function UserProfile({ walletAddress }: UserProfileProps) {
   // Fetch balance on component mount
   useEffect(() => {
     fetchBalance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Hi, TJ</CardTitle>
+        <CardTitle>{agentName}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Wallet Address */}
@@ -92,7 +94,7 @@ export function UserProfile({ walletAddress }: UserProfileProps) {
             <p className="text-sm text-destructive">{error}</p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Click refresh to load balance
+              Loading...
             </p>
           )}
         </div>

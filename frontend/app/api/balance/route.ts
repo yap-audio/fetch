@@ -3,9 +3,12 @@ import { NextResponse } from 'next/server';
 // USDC contract address on Base mainnet
 const USDC_CONTRACT_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
-export async function GET() {
+export async function GET(request: Request) {
   const apiKey = process.env.ETHERSCAN_API_KEY;
-  const walletAddress = process.env.NEXT_PUBLIC_USER_WALLET_ADDRESS;
+  
+  // Get address from query params or use user wallet as default
+  const { searchParams } = new URL(request.url);
+  const walletAddress = searchParams.get('address') || process.env.NEXT_PUBLIC_USER_WALLET_ADDRESS;
 
   if (!apiKey || !walletAddress) {
     return NextResponse.json(

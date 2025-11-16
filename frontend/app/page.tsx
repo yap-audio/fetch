@@ -1,12 +1,15 @@
 import { supabase } from '@/lib/supabase';
 import { IntentCard } from '@/components/intent-card';
 import { UserProfile } from '@/components/user-profile';
+import { AgentProfile } from '@/components/agent-profile';
 import { Intent } from '@/lib/database.types';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   const walletAddress = process.env.NEXT_PUBLIC_USER_WALLET_ADDRESS || '';
+  const buyerWallet = process.env.NEXT_PUBLIC_BUYER_AGENT_WALLET_ADDRESS || '';
+  const sellerWallet = process.env.NEXT_PUBLIC_SELLER_AGENT_WALLET_ADDRESS || '';
 
   // Fetch intents from Supabase
   const { data: intents, error } = await supabase
@@ -46,9 +49,11 @@ export default async function Home() {
             )}
           </div>
 
-          {/* User Profile Sidebar */}
-          <aside className="w-full lg:w-80">
+          {/* Wallets Sidebar */}
+          <aside className="w-full lg:w-80 space-y-6">
             <UserProfile walletAddress={walletAddress} />
+            <AgentProfile agentName="Buyer Agent" walletAddress={buyerWallet} />
+            <AgentProfile agentName="Seller Agent" walletAddress={sellerWallet} />
           </aside>
         </div>
       </main>

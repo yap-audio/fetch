@@ -48,11 +48,42 @@
             font-size: clamp(1.25rem, 4vw, 2.5rem);
             font-weight: 400;
             color: black;
+            margin-bottom: 2rem;
+        }
+
+        .cta-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 32px;
+            font-size: 1rem;
+            font-weight: 500;
+            color: white;
+            background-color: black;
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .cta-button:hover {
+            background-color: #1a1a1a;
+            transform: translateY(-1px);
+        }
+
+        .cta-button:active {
+            transform: translateY(0);
         }
 
         @media (max-width: 768px) {
             h1 {
                 font-size: clamp(2.5rem, 10vw, 6rem);
+            }
+            
+            .cta-button {
+                padding: 10px 24px;
+                font-size: 0.95rem;
             }
         }
     </style>
@@ -62,6 +93,7 @@
         <div class="content">
             <h1>Fetch</h1>
             <p class="tagline">Buy now for everything.</p>
+            <a href="https://app.fetchyc.dev" class="cta-button">Launch App</a>
         </div>
     </main>
 </body>

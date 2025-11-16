@@ -1,4 +1,4 @@
-# Fetch: Have everything.
+# Fetch: Buy now for everything.
 
 An autonomous agent-to-agent negotiation system that uses AI to negotiate purchases on your behalf, with real cryptocurrency payments on Base blockchain.
 

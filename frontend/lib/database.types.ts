@@ -42,20 +42,6 @@ export type Database = {
           tx_buyer_to_user_id?: string | null;
         };
       };
-      balances: {
-        Row: {
-          id: string;
-          balance_usdc: number;
-        };
-        Insert: {
-          id: string;
-          balance_usdc: number;
-        };
-        Update: {
-          id?: string;
-          balance_usdc?: number;
-        };
-      };
     };
   };
 };

@@ -1,23 +1,14 @@
 import { NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { Database } from '@/lib/database.types';
-import { createClient } from '@supabase/supabase-js';
 
 const SELLER_URL = process.env.NEXT_PUBLIC_SELLER_AGENT_URL || '';
 const BUYER_URL = process.env.NEXT_PUBLIC_BUYER_AGENT_URL || '';
 const MAX_ROUNDS = 10;
 
-// Wallet addresses for balance updates
+// Wallet addresses for balance logging
 const USER_WALLET = process.env.NEXT_PUBLIC_USER_WALLET_ADDRESS || '';
 const BUYER_WALLET = process.env.NEXT_PUBLIC_BUYER_AGENT_WALLET_ADDRESS || '';
 const SELLER_WALLET = process.env.NEXT_PUBLIC_SELLER_AGENT_WALLET_ADDRESS || '';
-
-// Initialize Supabase client with service role key for server-side operations
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceKey);
-
-type IntentUpdate = Database['public']['Tables']['intents']['Update'];
 
 interface ConversationEntry {
   role: 'seller' | 'buyer';
@@ -25,34 +16,11 @@ interface ConversationEntry {
 }
 
 /**
- * Helper function to update balance in database
- * Fetches current balance, applies delta, and upserts
+ * Helper function to log balance changes
+ * Note: Balance tracking removed to simplify build - transactions are tracked via tx hashes in intents table
  */
-async function updateBalance(walletAddress: string, delta: number): Promise<void> {
-  try {
-    // Fetch current balance
-    const { data: currentBalance } = await supabaseAdmin
-      .from('balances')
-      .select('balance_usdc')
-      .eq('id', walletAddress)
-      .single();
-
-    const currentAmount = currentBalance?.balance_usdc || 0;
-    const newAmount = currentAmount + delta;
-
-    // Upsert new balance
-    await supabaseAdmin
-      .from('balances')
-      .upsert({
-        id: walletAddress,
-        balance_usdc: newAmount
-      });
-
-    console.log(`Updated balance for ${walletAddress}: ${currentAmount} + ${delta} = ${newAmount}`);
-  } catch (error) {
-    console.error(`Error updating balance for ${walletAddress}:`, error);
-    throw error;
-  }
+async function logBalanceChange(walletAddress: string, delta: number): Promise<void> {
+  console.log(`Balance change for ${walletAddress}: ${delta > 0 ? '+' : ''}${delta} USDC`);
 }
 
 export async function GET(
@@ -215,29 +183,24 @@ export async function GET(
               .update({ status: 'completed' })
               .eq('uuid', intentId);
 
-            // Update balances if payment was made
+            // Log balance changes if payment was made
             if (buyerResult.paymentResult) {
-              try {
-                const payment = buyerResult.paymentResult;
-                
-                // Update seller balance (add payment)
-                if (payment.amount_paid && !payment.error) {
-                  await updateBalance(SELLER_WALLET, payment.amount_paid);
-                }
-                
-                // Update user balance (add refund)
-                if (payment.amount_refunded && payment.amount_refunded > 0 && !payment.error) {
-                  await updateBalance(USER_WALLET, payment.amount_refunded);
-                }
-                
-                // Update buyer balance (subtract total: payment + refund)
-                if (payment.amount_paid && !payment.error) {
-                  const totalSpent = payment.amount_paid + (payment.amount_refunded || 0);
-                  await updateBalance(BUYER_WALLET, -totalSpent);
-                }
-              } catch (error) {
-                console.error('Error updating balances:', error);
-                // Continue even if balance update fails
+              const payment = buyerResult.paymentResult;
+              
+              // Log seller balance (add payment)
+              if (payment.amount_paid && !payment.error) {
+                await logBalanceChange(SELLER_WALLET, payment.amount_paid);
+              }
+              
+              // Log user balance (add refund)
+              if (payment.amount_refunded && payment.amount_refunded > 0 && !payment.error) {
+                await logBalanceChange(USER_WALLET, payment.amount_refunded);
+              }
+              
+              // Log buyer balance (subtract total: payment + refund)
+              if (payment.amount_paid && !payment.error) {
+                const totalSpent = payment.amount_paid + (payment.amount_refunded || 0);
+                await logBalanceChange(BUYER_WALLET, -totalSpent);
               }
             }
             
@@ -252,19 +215,14 @@ export async function GET(
           }
 
           if (buyerResult.decision === 'reject') {
-            // Update balances if refund was made
+            // Log balance changes if refund was made
             if (buyerResult.paymentResult) {
-              try {
-                const payment = buyerResult.paymentResult;
-                
-                // Update user balance (full refund)
-                if (payment.amount_refunded && !payment.error) {
-                  await updateBalance(USER_WALLET, payment.amount_refunded);
-                  await updateBalance(BUYER_WALLET, -payment.amount_refunded);
-                }
-              } catch (error) {
-                console.error('Error updating balances:', error);
-                // Continue even if balance update fails
+              const payment = buyerResult.paymentResult;
+              
+              // Log user balance (full refund)
+              if (payment.amount_refunded && !payment.error) {
+                await logBalanceChange(USER_WALLET, payment.amount_refunded);
+                await logBalanceChange(BUYER_WALLET, -payment.amount_refunded);
               }
             }
             

@@ -63,78 +63,46 @@ class NegotiationAgent:
     
     def _build_buyer_system_prompt(self) -> str:
         """Build system prompt for buyer agent."""
-        return f"""You are a skilled negotiation agent representing a buyer. Your goal is to negotiate the best possible deal on their behalf.
+        return f"""You are a negotiation agent representing a buyer. Get the best deal within budget.
 
 BUYER'S INTENT:
-- Item wanted: {self.description}
-- Maximum budget: ${self.max_budget:.2f} USD
+- Item: {self.description}
+- Max budget: ${self.max_budget:.2f} USD
 
-YOUR ROLE:
-1. Evaluate seller offers using extended thinking to consider:
-   - Whether the price is within budget
-   - If there's room for negotiation (even if within budget)
-   - Market value and fairness of the offer
-   - Negotiation tactics (anchoring, concessions, timing)
+STRATEGY: Be concise and direct in your responses. Evaluate offers quickly:
+- Over budget: Counter-offer lower
+- Within budget but negotiable: Try for better price
+- Fair price: Accept
 
-2. Respond conversationally but strategically:
-   - If the offer is way over budget: politely decline or make a counter-offer
-   - If the offer is reasonable but could be better: negotiate for a better price
-   - If the offer is at or below budget AND fair: accept the deal
+END EACH RESPONSE WITH:
+- "DECISION: ACCEPT" (state exact price: "I accept at $X. DECISION: ACCEPT")
+- "DECISION: REJECT" (decline permanently)
+- "DECISION: CONTINUE" (keep negotiating)
 
-3. When you make a decision, clearly indicate it by ending your response with one of:
-   - "DECISION: ACCEPT" - when you want to accept the offer
-     IMPORTANT: When accepting, clearly state the exact agreed price: "I accept at $14,200. DECISION: ACCEPT"
-   - "DECISION: REJECT" - when you want to decline permanently
-   - "DECISION: CONTINUE" - when you want to keep negotiating
-
-NEGOTIATION TACTICS:
-- Start with a lower counter-offer to anchor expectations
-- Show genuine interest but don't seem desperate
-- Use the buyer's constraints as leverage
-- Be respectful and professional
-- Know when to walk away
-
-Remember: You're protecting the buyer's interests while trying to reach a fair deal. Use your extended thinking to evaluate offers holistically."""
+Keep responses brief, professional, and strategic. Don't be desperate but show interest."""
     
     def _build_seller_system_prompt(self) -> str:
         """Build system prompt for seller agent."""
-        return f"""You are a skilled negotiation agent representing a seller. Your PRIMARY goal is to SELL the item while getting a fair price.
+        return f"""You are a negotiation agent representing a seller. PRIMARY GOAL: SELL the item at a fair price.
 
 SELLER'S ITEM:
-- Item for sale: {self.description}
-- Minimum acceptable price: ${self.min_amount:.2f} USD (this is your floor - don't go below this)
-- Target price range: ${self.min_amount:.2f} - ${self.max_budget:.2f} USD
+- Item: {self.description}
+- Minimum price: ${self.min_amount:.2f} USD (your floor)
+- Target range: ${self.min_amount:.2f} - ${self.max_budget:.2f} USD
 
-YOUR ROLE:
-1. Evaluate buyer offers using extended thinking to consider:
-   - Is the offer above your minimum? (${self.min_amount:.2f})
-   - How close is it to your target range?
-   - Is continuing negotiation worth the risk of losing the sale?
-   - You WANT to sell - be flexible and motivated to close
+STRATEGY: Be concise and motivated to close. You WANT to sell.
+- Offer above minimum: Counter-offer attractively to close
+- Offer at/near minimum: Accept it! Don't risk losing the sale
+- Offer below minimum: Counter at/slightly above minimum
+- Emphasize value briefly
 
-2. Respond conversationally and persuasively:
-   - If offer is above minimum: encourage the buyer to accept with your counter-offer
-   - If offer is close to minimum: make attractive counter-offer to close the deal
-   - If offer is below minimum: counter-offer at or slightly above minimum
-   - Emphasize value, condition, and why it's a good deal
-   - Remember: The BUYER must accept to complete the purchase and payment
+END EACH RESPONSE WITH:
+- "DECISION: CONTINUE" (almost always - you can't finalize, only buyer can)
+- "DECISION: REJECT" (only if unreasonably low)
 
-3. When you make a decision, clearly indicate it by ending your response with one of:
-   - "DECISION: CONTINUE" - when you want to make a counter-offer or continue negotiating
-     IMPORTANT: As the seller, you should almost always use CONTINUE. Only the buyer can finalize the deal.
-   - "DECISION: REJECT" - when the offer is unreasonably low and you want to stop
-   
-NOTE: You should NOT use "DECISION: ACCEPT" as the seller. The buyer must be the one to accept and initiate payment. Your job is to negotiate and present good offers until the buyer accepts.
+NOTE: Only BUYER can accept and trigger payment. Your job: present good offers until they accept.
 
-NEGOTIATION STRATEGY:
-- You're MOTIVATED to sell (this is key!)
-- Be willing to compromise to close the deal
-- If offer is reasonable (>= minimum), lean toward accepting
-- Don't let perfect be the enemy of good - a bird in hand is worth two in the bush
-- Build rapport and emphasize the item's value
-- If buyer seems serious, work with them on price
-
-Remember: Your goal is to SELL while staying above ${self.min_amount:.2f}. Be strategic but willing to close the deal. Use your extended thinking to evaluate if an offer is good enough to accept."""
+Keep responses brief and persuasive. Don't overthink - a bird in hand is worth two in the bush."""
 
     async def negotiate(
         self, 
